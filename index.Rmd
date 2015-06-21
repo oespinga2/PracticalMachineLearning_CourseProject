@@ -1,0 +1,159 @@
+---
+title: "Pattern Recognition of the Quality of Human Activities"
+subtitle: "Practical Machine Learning Course Project"
+author: oespinga2
+output: 
+    html_document:
+      keep_md: yes
+
+references:
+- id: velloso2013
+  title: Qualitative Activity Recognition of Weight Lifting Exercises
+  author:
+  - family: Velloso
+    given: E.
+  - family: Bulling
+    given: A.
+  - family: Gellersen
+    given: H.
+  - family: Ugulino
+    given: W.
+  - family: Fuks
+    given: H.
+  container-title: Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) 
+  volume: 
+  issue: 
+  publisher: Stuttgart, Germany, ACM SIGCHI
+  page: 
+  type: article-journal
+  issued:
+    year: 2013
+---
+### Background
+In this work we aim to predict the "quality" of certain [human activities](http://groupware.les.inf.puc-rio.br/har#wle_paper_section). Five ways to perform the same exercise at different levels of "quality" and number of repetitions were recorded with four sensors (arm, forearm, belt, and dumbbell). The sensors captured several features at various time interval lengths (from 5 second to 2.5 seconds) including features on the Euler angles (roll, pitch and yaw), as well as the raw accelerometer, gyroscope and magnetometer readings, see [@velloso2013] for more details on the study.
+
+```{r, echo=F}
+setwd("/Users/osvespinga/Documents/coursera/data science specialization/module8_PracticalMachineLearning/PracticalMachineLearning_CourseProject/")
+train<-read.csv("pml-training.csv")
+test<-read.csv("pml-testing.csv")
+```
+
+### Training dataset
+The dataset contains information on six individuals, which performed one set of 10 repetitions of a predetermined exercise in five different manners (recorded in variable *classe* as A to E). In total the dataset containts `r nrow(train)` observations given that the sensors recorded serveal features within repetitions.
+
+The following plots show scatterplots of the Euler angles features (totals) across devices and subjects per each quality classification level (A to E)
+
+```{r,echo=FALSE,fig.width=9}
+library(reshape2)
+train_plots1<-melt(train,id.vars=c("X","user_name","cvtd_timestamp","classe"),measure.vars=c("roll_belt","roll_arm","roll_forearm","roll_dumbbell","pitch_belt","pitch_arm","pitch_forearm","pitch_dumbbell","yaw_belt","yaw_arm","yaw_forearm","yaw_dumbbell"))
+splitted<-strsplit(as.character(train_plots1$variable),"_")
+train_plots1$feature<-sapply(splitted,function(x)x[1])
+train_plots1$device<-sapply(splitted,function(x)x[2])
+train_plots2<-dcast(train_plots1,X + user_name + cvtd_timestamp + classe + device ~ feature)
+
+library(ggplot2)
+ggplot(train_plots2,aes(x=roll,y=pitch,color=user_name)) + geom_point() + facet_grid(device~classe,scales = "free") +theme_bw()
+
+ggplot(train_plots2,aes(x=roll,y=yaw,color=user_name)) + geom_point() + facet_grid(device~classe,scales = "free") +theme_bw()
+
+ggplot(train_plots2,aes(x=pitch,y=yaw,color=user_name)) + geom_point() + facet_grid(device~classe,scales = "free") +theme_bw()
+```
+
+Interestingly, the variation within subjects for the belt device seems to be smaller than the variation between subjects. However, the other devices show more complex patterns, none of them seem to follow any linear trend whatsoever. Further, it is interesting that in some cases the range of the measurements seem to decrease as the "quality" of the exercise diminshed (i.e. moving from grid A to E).
+
+### Feature selection
+In the study [@velloso2013] the authors consider 17 features to include in their pattern recognition approach. We observe that in most cases, variables associated with the range and variation of the vector of measurements (raw accelerometer, gyroscope and
+magnetometer readings) were considered as predictive features. For this reason, we select these features along with the sum of the Euler angles (roll,yaw,pitch) for further investigation; part of the reason of this choice is that hese variables do not have any missing values in them. As opposed to @velloso2013, we make no distiction of the features per device, i.e. the same features are selected for all devices. Therefore a total of 36 predictive variables were selected.
+  
+```{r,echo=T}
+#fix variable names
+names(train)<-gsub("picth","pitch",names(train))
+names(test)<-gsub("picth","pitch",names(test))
+
+#Select and Construct variables for predictive model
+#names(train)
+
+train_nw<-train[,c("X","classe","user_name","cvtd_timestamp")]
+
+  for(dev in c("arm","forearm","dumbbell","belt"))
+    for(euler in c("roll_","pitch_","yaw_")){
+      colnw<-paste0(euler,dev)
+      train_nw[,colnw]<-train[,colnw]
+    }
+for(dev in c("arm","forearm","dumbbell","belt"))
+  for(meas in c("gyros_","accel_","magnet_") ){
+    train_nw[,paste0(meas,dev,"_var")]<-apply(train[,paste0(meas,dev,c("_x","_y","_z"))],1,var)
+    train_nw[,paste0(meas,dev,"_ran")]<-apply(train[,paste0(meas,dev,c("_x","_y","_z"))],1,function(x)max(x)-min(x))
+  }
+```
+
+### Pattern Recognition Approach
+Since the authors in the study proposed a random forest algorithm to classify the patterns, we follow a similar approach although with certain differences. The main one is given by the different predictor variables we aim to use. Even though more variables may lead to overfitting we consider that 36 variables (only 19 more than the ones in the study) are reasonable given the size of the dataset. 
+
+In addition, to assess the out of sample error, we perform a 10-fold cross validation. We expect the out of sample error to be closer to the value reported in the paper of 78.2%. To do so, we use the cross-validation samples to estimate this error. Further, in order to accurately get an estimate, we generate an additional testing dataset (from the original training dataset).
+
+The proposed algorithm along with its code is displayed below
+
+```{r,eval=T,cache=TRUE,message=FALSE}
+library(caret)
+set.seed(1337)
+training <- createDataPartition(y = train_nw$classe, p = 0.6, list = FALSE)
+nopred<-which(names(train_nw) %in% c("X","user_name","cvtd_timestamp"))
+train_Data <- train_nw[training, -nopred]
+test_Data <- train_nw[-training, -nopred]
+
+library(doMC)
+registerDoMC(cores = 4)
+ctrl <- trainControl(method = "cv")
+modelFit0<-train(train_Data$classe ~., method="rf",data=train_Data, trControl = ctrl)
+```
+
+### Results
+```{r}
+print(modelFit0, digits = 3)
+```
+
+The results for each of the cross-validation samples are below
+```{r}
+plot(modelFit0)
+```
+
+```{r}
+modelFit0$resample
+```
+
+Additionally, the confusion matrix with the out of sample error estimat is presented below
+
+```{r}
+confusionMatrix(predict(modelFit0,test_Data), test_Data$classe)
+```
+
+Further, the predicted values for the testing dataset (20 cases) is shown below. We first reconstruct the test data.frame
+
+```{r}
+test_nw<-test[,c("X","problem_id","user_name","cvtd_timestamp")]
+  for(dev in c("arm","forearm","dumbbell","belt"))
+    for(euler in c("roll_","pitch_","yaw_")){
+      colnw<-paste0(euler,dev)
+      test_nw[,colnw]<-test[,colnw]
+    }
+for(dev in c("arm","forearm","dumbbell","belt"))
+  for(meas in c("gyros_","accel_","magnet_") ){
+    test_nw[,paste0(meas,dev,"_var")]<-apply(test[,paste0(meas,dev,c("_x","_y","_z"))],1,var)
+    test_nw[,paste0(meas,dev,"_ran")]<-apply(test[,paste0(meas,dev,c("_x","_y","_z"))],1,function(x)max(x)-min(x))
+  }
+predict(modelFit0,test_nw)
+```
+
+```{r,echo=F}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("../CourseProject_submission/problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(predict(modelFit0,test_nw))
+```
+
+### References
