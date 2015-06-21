@@ -51,13 +51,6 @@ The proposed algorithm along with its code is displayed below
 
 ```r
 library(caret)
-```
-
-```
-## Loading required package: lattice
-```
-
-```r
 set.seed(1337)
 training <- createDataPartition(y = train_nw$classe, p = 0.6, list = FALSE)
 nopred<-which(names(train_nw) %in% c("X","user_name","cvtd_timestamp"))
@@ -65,31 +58,39 @@ train_Data <- train_nw[training, -nopred]
 test_Data <- train_nw[-training, -nopred]
 
 library(doMC)
-```
-
-```
-## Loading required package: foreach
-## Loading required package: iterators
-## Loading required package: parallel
-```
-
-```r
 registerDoMC(cores = 4)
 ctrl <- trainControl(method = "cv")
 modelFit0<-train(train_Data$classe ~., method="rf",data=train_Data, trControl = ctrl)
 ```
 
-```
-## Loading required package: randomForest
-## randomForest 4.6-10
-## Type rfNews() to see new features/changes/bug fixes.
-```
+### Results
 
 ```r
-?train
+print(modelFit0, digits = 3)
 ```
 
-### Results
+```
+## Random Forest 
+## 
+## 11776 samples
+##    36 predictor
+##     5 classes: 'A', 'B', 'C', 'D', 'E' 
+## 
+## No pre-processing
+## Resampling: Cross-Validated (10 fold) 
+## 
+## Summary of sample sizes: 10598, 10597, 10599, 10598, 10599, 10600, ... 
+## 
+## Resampling results across tuning parameters:
+## 
+##   mtry  Accuracy  Kappa  Accuracy SD  Kappa SD
+##    2    0.986     0.983  0.00282      0.00357 
+##   19    0.985     0.980  0.00302      0.00382 
+##   36    0.981     0.976  0.00448      0.00566 
+## 
+## Accuracy was used to select the optimal model using  the largest value.
+## The final value used for the model was mtry = 2.
+```
 
 The results for each of the cross-validation samples are below
 
@@ -97,7 +98,7 @@ The results for each of the cross-validation samples are below
 plot(modelFit0)
 ```
 
-![](index_files/figure-html/unnamed-chunk-5-1.png) 
+![](index_files/figure-html/unnamed-chunk-6-1.png) 
 
 
 ```r
@@ -106,16 +107,16 @@ modelFit0$resample
 
 ```
 ##     Accuracy     Kappa Resample
-## 1  0.9881255 0.9849810   Fold02
-## 2  0.9881154 0.9849647   Fold01
-## 3  0.9847069 0.9806520   Fold03
-## 4  0.9855442 0.9817162   Fold06
-## 5  0.9898046 0.9871004   Fold05
-## 6  0.9838710 0.9795849   Fold04
-## 7  0.9906542 0.9881791   Fold07
-## 8  0.9855565 0.9817206   Fold10
-## 9  0.9881255 0.9849796   Fold09
-## 10 0.9847199 0.9806652   Fold08
+## 1  0.9881255 0.9849809   Fold02
+## 2  0.9838710 0.9795919   Fold01
+## 3  0.9830076 0.9785025   Fold03
+## 4  0.9846939 0.9806371   Fold06
+## 5  0.9898046 0.9870994   Fold05
+## 6  0.9864177 0.9828142   Fold04
+## 7  0.9915038 0.9892532   Fold07
+## 8  0.9838573 0.9795722   Fold10
+## 9  0.9881255 0.9849801   Fold09
+## 10 0.9855688 0.9817397   Fold08
 ```
 
 Additionally, the confusion matrix with the out of sample error estimat is presented below
@@ -181,5 +182,7 @@ predict(modelFit0,test_nw)
 ##  [1] B A B A A E D B A A B C B A E E A B B B
 ## Levels: A B C D E
 ```
+
+
 
 ### References

@@ -1,16 +1,9 @@
 base
-methods
-datasets
-utils
-grDevices
-graphics
-stats
 reshape2
 ggplot2
 lattice
 caret
 foreach
 iterators
-parallel
 doMC
 randomForest
